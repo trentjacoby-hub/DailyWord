@@ -1,0 +1,85 @@
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0d0c0a;
+  --surface: #171410;
+  --surface-2: #1f1b16;
+  --border: #2e2820;
+  --gold: #c9a55a;
+  --gold-light: #e8c87a;
+  --text: #e8dcc8;
+  --text-muted: #8a7a64;
+  --accent: #7a2020;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Crimson Text', Georgia, serif;
+  font-size: 18px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Gold divider ornament */
+.ornament {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--gold);
+  opacity: 0.6;
+}
+
+.ornament::before,
+.ornament::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+/* Scripture text styling */
+.scripture-text p {
+  margin-bottom: 0.75rem;
+  line-height: 1.85;
+}
+
+.scripture-text p:last-child {
+  margin-bottom: 0;
+}
+
+/* Smooth fade-in for page content */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
