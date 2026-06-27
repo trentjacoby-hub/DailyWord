@@ -3,16 +3,9 @@ import { DayReadings, DayAnalysis, ReadingAnalysis } from '@/types';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Alleluia verse is too short to analyze meaningfully
-const SKIP_TITLES = ['Alleluia'];
-
 export async function analyzeReadings(dayReadings: DayReadings): Promise<DayAnalysis> {
-  const readingsToAnalyze = dayReadings.readings.filter(
-    (r) => !SKIP_TITLES.some((s) => r.title.startsWith(s))
-  );
-
   const analyses = await Promise.all(
-    readingsToAnalyze.map((reading) =>
+    dayReadings.readings.map((reading) =>
       analyzeOneReading(reading.title, reading.reference, reading.text, dayReadings.liturgicalTitle)
     )
   );

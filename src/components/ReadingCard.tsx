@@ -8,9 +8,7 @@ interface Props {
 const TITLE_COLORS: Record<string, string> = {
   'Reading 1': '#c9a55a',
   'Reading 2': '#c9a55a',
-  'Responsorial Psalm': '#9b7fd4',
   Gospel: '#7aad8a',
-  Alleluia: '#7aad8a',
 };
 
 export default function ReadingCard({ reading, index }: Props) {

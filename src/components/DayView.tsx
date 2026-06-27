@@ -78,10 +78,10 @@ export default function DayView({ dayReadings, availableDates }: Props) {
           </div>
           <p
             style={{
-              fontFamily: "'Playfair Display', Georgia, serif",
-              fontStyle: 'italic',
-              fontSize: 'clamp(1rem, 2.5vw, 1.2rem)',
-              lineHeight: 1.8,
+              fontFamily: 'Inter, system-ui, sans-serif',
+              fontStyle: 'normal',
+              fontSize: 'clamp(0.95rem, 2vw, 1.05rem)',
+              lineHeight: 1.9,
               color: '#e8dcc8',
               margin: 0,
               maxWidth: 680,

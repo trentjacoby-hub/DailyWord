@@ -27,7 +27,7 @@ export default async function DatePage({ params }: Props) {
 
   let dayReadings = await getReadings(date);
 
-  if (!dayReadings) {
+  if (!dayReadings || dayReadings.readings.length === 0) {
     try {
       dayReadings = await fetchReadingsForDate(date);
       dayReadings.analysis = await analyzeReadings(dayReadings);

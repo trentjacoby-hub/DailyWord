@@ -72,12 +72,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Readings sourced from the{' '}
           <a
-            href="https://bible.usccb.org"
+            href="https://www.catholicgallery.org"
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: 'var(--gold)', textDecoration: 'none' }}
           >
-            USCCB
+            Catholic Gallery
           </a>
           . AI reflections are aids to contemplation, not official Catholic teaching.
         </footer>

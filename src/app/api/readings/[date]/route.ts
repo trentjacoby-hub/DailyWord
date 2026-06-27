@@ -26,13 +26,12 @@ export async function GET(
     // Try cache first
     let dayReadings = await getReadings(date);
 
-    if (!dayReadings) {
-      // Fetch from USCCB and analyze
+    if (!dayReadings || dayReadings.readings.length === 0) {
+      // Fetch and analyze (also re-fetches if a prior scrape returned empty readings)
       dayReadings = await fetchReadingsForDate(date);
       dayReadings.analysis = await analyzeReadings(dayReadings);
       await saveReadings(dayReadings);
     } else if (!dayReadings.analysis) {
-      // Have readings but analysis was never run (edge case)
       dayReadings.analysis = await analyzeReadings(dayReadings);
       await saveReadings(dayReadings);
     }

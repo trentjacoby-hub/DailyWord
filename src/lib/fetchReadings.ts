@@ -1,12 +1,18 @@
 import * as cheerio from 'cheerio';
 import { DayReadings, Reading } from '@/types';
-import { isoToUSCCB } from './dates';
+import { isoToCatholicGallery } from './dates';
 
-const VALID_TITLES = ['Reading 1', 'Reading 2', 'Responsorial Psalm', 'Alleluia', 'Gospel'];
+const READING_MAP: Record<string, string> = {
+  'First Reading': 'Reading 1',
+  'Second Reading': 'Reading 2',
+  'Gospel': 'Gospel',
+};
+
+const SKIP_PREFIXES = ['Responsorial Psalm', 'Alleluia'];
 
 export async function fetchReadingsForDate(isoDate: string): Promise<DayReadings> {
-  const usccbDate = isoToUSCCB(isoDate);
-  const url = `https://bible.usccb.org/bible/readings/${usccbDate}.cfm`;
+  const cgDate = isoToCatholicGallery(isoDate);
+  const url = `https://www.catholicgallery.org/mass-reading/${cgDate}/`;
 
   const response = await fetch(url, {
     headers: {
@@ -26,58 +32,48 @@ export async function fetchReadingsForDate(isoDate: string): Promise<DayReadings
   });
 
   if (!response.ok) {
-    throw new Error(`USCCB fetch failed: HTTP ${response.status} for ${isoDate}`);
+    throw new Error(`CatholicGallery fetch failed: HTTP ${response.status} for ${isoDate}`);
   }
 
   const html = await response.text();
   const $ = cheerio.load(html);
 
-  // ── Liturgical title ────────────────────────────────────────────────────────
-  // First <h2> that isn't the site header
+  // ── Liturgical title ──────────────────────────────────────────────────────
+  // Page structure: h1 = date title, first h2 = liturgical day description,
+  // subsequent h2s = reading sections
+  const allPrefixes = [...Object.keys(READING_MAP), ...SKIP_PREFIXES];
   let liturgicalTitle = '';
   $('h2').each((_, el) => {
     const text = $(el).text().trim();
-    if (text && text !== 'Daily Readings' && !text.toLowerCase().includes('dive into')) {
-      liturgicalTitle = text;
-      return false; // break
+    if (!allPrefixes.some((p) => text.startsWith(p + ':'))) {
+      // CatholicGallery separates multiple designations with " / " — take the first
+      liturgicalTitle = text.split('/')[0].trim();
+      return false; // take the first non-reading h2
     }
   });
 
-  // ── Readings ─────────────────────────────────────────────────────────────────
+  // ── Readings ──────────────────────────────────────────────────────────────
   const readings: Reading[] = [];
 
-  $('h3').each((_, h3) => {
-    const title = $(h3).text().trim();
-    if (!VALID_TITLES.some((t) => title === t || title.startsWith(t + ' '))) return;
+  $('h2').each((_, h2) => {
+    const fullText = $(h2).text().trim();
 
-    let reference = '';
+    const key = Object.keys(READING_MAP).find((k) => fullText.startsWith(k + ':'));
+    if (!key) return;
+
+    const reference = fullText.slice(key.length + 2).trim();
+
+    // Text lives in <div class="cg_content"> immediately after the h2
     const textParts: string[] = [];
-
-    let sibling = $(h3).next();
-    while (sibling.length && !sibling.is('h3') && !sibling.is('h2')) {
-      const tag = sibling.prop('tagName')?.toLowerCase();
-
-      if (tag === 'p' || tag === 'blockquote') {
-        // First paragraph with a USCCB bible link = the scripture reference
-        if (!reference) {
-          const link = sibling.find('a[href*="bible.usccb.org"]').first();
-          if (link.length) {
-            reference = link.text().trim();
-            sibling = sibling.next();
-            continue;
-          }
-        }
-        const text = sibling.text().trim();
-        if (text) textParts.push(text);
-      }
-
-      sibling = sibling.next();
-    }
+    $(h2).next('div.cg_content').find('p').each((_, p) => {
+      const text = $(p).text().trim();
+      if (text) textParts.push(text);
+    });
 
     if (textParts.length > 0) {
       readings.push({
-        title,
-        reference: reference || title,
+        title: READING_MAP[key],
+        reference,
         text: textParts.join('\n\n'),
       });
     }

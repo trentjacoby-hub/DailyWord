@@ -7,11 +7,6 @@ export function getTodayCST(): Date {
   return toZonedTime(new Date(), CST_TIMEZONE);
 }
 
-/** Format a Date as MMDDYY for USCCB URL */
-export function formatDateForUSCCB(date: Date): string {
-  return format(date, 'MMddyy');
-}
-
 /** Format a Date as YYYY-MM-DD */
 export function formatDateISO(date: Date): string {
   return format(date, 'yyyy-MM-dd');
@@ -26,11 +21,6 @@ export function parseISODate(dateStr: string): Date {
 export function formatDateDisplay(dateStr: string): string {
   const date = parseISODate(dateStr);
   return format(date, 'EEEE, MMMM d, yyyy');
-}
-
-/** Convert YYYY-MM-DD → MMDDYY for USCCB */
-export function isoToUSCCB(isoDate: string): string {
-  return formatDateForUSCCB(parseISODate(isoDate));
 }
 
 export function getPreviousDate(isoDate: string): string {
@@ -50,4 +40,9 @@ export function isFutureDate(isoDate: string): boolean {
 export function isValidISODate(dateStr: string): boolean {
   const d = parse(dateStr, 'yyyy-MM-dd', new Date());
   return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === dateStr;
+}
+
+/** Format a Date as DDMMYY for CatholicGallery URL */
+export function isoToCatholicGallery(isoDate: string): string {
+  return format(parseISODate(isoDate), 'ddMMyy');
 }

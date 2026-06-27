@@ -14,8 +14,8 @@ export default async function HomePage() {
 
   let dayReadings = await getReadings(isoDate);
 
-  // If not yet cached, fetch + analyze now (first visitor of the day)
-  if (!dayReadings) {
+  // If not yet cached, or cached with empty readings (bad scrape), fetch + analyze now
+  if (!dayReadings || dayReadings.readings.length === 0) {
     dayReadings = await fetchReadingsForDate(isoDate);
     dayReadings.analysis = await analyzeReadings(dayReadings);
     await saveReadings(dayReadings);
