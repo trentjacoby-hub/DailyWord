@@ -16,6 +16,7 @@ export default function CalendarNav({ currentDate, todayDate, availableDates }: 
 
   const prevDate = getPreviousDate(currentDate);
   const nextDate = getNextDate(currentDate);
+  const prevIsAvailable = availableDates.includes(prevDate);
   const nextIsFuture = isFutureDate(nextDate);
 
   const navigate = (date: string) => {
@@ -36,10 +37,17 @@ export default function CalendarNav({ currentDate, todayDate, availableDates }: 
       >
         {/* Prev */}
         <button
-          onClick={() => navigate(prevDate)}
-          title="Previous day"
-          style={navBtnStyle}
-          onMouseEnter={(e) => ((e.target as HTMLElement).style.color = '#c9a55a')}
+          onClick={() => prevIsAvailable && navigate(prevDate)}
+          disabled={!prevIsAvailable}
+          title={prevIsAvailable ? 'Previous day' : 'No earlier readings'}
+          style={{
+            ...navBtnStyle,
+            opacity: prevIsAvailable ? 1 : 0.3,
+            cursor: prevIsAvailable ? 'pointer' : 'not-allowed',
+          }}
+          onMouseEnter={(e) => {
+            if (prevIsAvailable) (e.target as HTMLElement).style.color = '#c9a55a';
+          }}
           onMouseLeave={(e) => ((e.target as HTMLElement).style.color = 'var(--text-muted)')}
         >
           ← Previous
