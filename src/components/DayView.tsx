@@ -3,6 +3,7 @@ import { formatDateISO, getTodayCST } from '@/lib/dates';
 import ReadingCard from './ReadingCard';
 import AnalysisCard from './AnalysisCard';
 import CalendarNav from './CalendarNav';
+import SiteHeader from './SiteHeader';
 
 interface Props {
   dayReadings: DayReadings;
@@ -13,6 +14,12 @@ export default function DayView({ dayReadings, availableDates }: Props) {
   const { liturgicalTitle, readings, analysis } = dayReadings;
 
   return (
+    <>
+    <SiteHeader
+      currentDate={dayReadings.date}
+      todayDate={formatDateISO(getTodayCST())}
+      availableDates={availableDates}
+    />
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '2rem 1.5rem' }}>
 
       {/* Navigation */}
@@ -125,5 +132,6 @@ export default function DayView({ dayReadings, availableDates }: Props) {
         </div>
       )}
     </div>
+    </>
   );
 }
