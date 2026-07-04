@@ -44,9 +44,9 @@ export default function SiteHeader({ currentDate, todayDate, availableDates }: P
           maxWidth: 900,
           margin: '0 auto',
           padding: '1.25rem 1.5rem',
-          display: 'grid',
-          gridTemplateColumns: '1fr auto 1fr',
+          display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
         }}
       >
         {/* Logo */}
@@ -70,20 +70,8 @@ export default function SiteHeader({ currentDate, todayDate, availableDates }: P
           </a>
         </div>
 
-        {/* Subtitle — centered */}
-        <span
-          style={{
-            fontSize: '0.875rem',
-            color: 'var(--text-muted)',
-            fontFamily: 'Inter, system-ui, sans-serif',
-            textAlign: 'center',
-          }}
-        >
-          Catholic Readings, Reflection, &amp; Analysis
-        </span>
-
         {/* Calendar icon */}
-        <div style={{ position: 'relative', justifySelf: 'end' }} ref={dropdownRef}>
+        <div style={{ position: 'relative' }} ref={dropdownRef}>
           <button
             onClick={() => setShowCalendar(!showCalendar)}
             title="Browse past readings"
