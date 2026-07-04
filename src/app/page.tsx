@@ -5,8 +5,7 @@ import { analyzeReadings } from '@/lib/analyzeReadings';
 import { saveReadings } from '@/lib/storage';
 import DayView from '@/components/DayView';
 
-// Revalidate page once a day (86400 seconds)
-export const revalidate = 86400;
+export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   const today = getTodayCST();

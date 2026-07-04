@@ -44,9 +44,9 @@ export default function SiteHeader({ currentDate, todayDate, availableDates }: P
           maxWidth: 900,
           margin: '0 auto',
           padding: '1.25rem 1.5rem',
-          display: 'flex',
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
           alignItems: 'center',
-          justifyContent: 'space-between',
         }}
       >
         {/* Logo */}
@@ -67,21 +67,23 @@ export default function SiteHeader({ currentDate, todayDate, availableDates }: P
             >
               Daily Word
             </span>
-            <span
-              style={{
-                fontSize: '0.875rem',
-                color: 'var(--text-muted)',
-                marginLeft: '0.5rem',
-                fontFamily: 'Inter, system-ui, sans-serif',
-              }}
-            >
-              Catholic Mass Readings
-            </span>
           </a>
         </div>
 
+        {/* Subtitle — centered */}
+        <span
+          style={{
+            fontSize: '0.875rem',
+            color: 'var(--text-muted)',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            textAlign: 'center',
+          }}
+        >
+          Catholic Readings, Reflection, &amp; Analysis
+        </span>
+
         {/* Calendar icon */}
-        <div style={{ position: 'relative' }} ref={dropdownRef}>
+        <div style={{ position: 'relative', justifySelf: 'end' }} ref={dropdownRef}>
           <button
             onClick={() => setShowCalendar(!showCalendar)}
             title="Browse past readings"

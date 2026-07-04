@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Daily Word — Catholic Mass Readings',
+  title: 'Daily Word — Catholic Readings, Reflection, & Analysis',
   description: 'Daily Catholic Mass readings with AI-powered reflections following the liturgical calendar.',
   icons: { icon: '/favicon.ico' },
 };

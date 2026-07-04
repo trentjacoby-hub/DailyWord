@@ -24,10 +24,9 @@ export default function CalendarNav({ currentDate, todayDate, availableDates }: 
   return (
     <div
       style={{
-        display: 'flex',
+        display: 'grid',
+        gridTemplateColumns: '1fr auto 1fr',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '1rem',
         marginBottom: '0.5rem',
       }}
     >
@@ -38,6 +37,7 @@ export default function CalendarNav({ currentDate, todayDate, availableDates }: 
         title={prevIsAvailable ? 'Previous day' : 'No earlier readings'}
         style={{
           ...navBtnStyle,
+          justifySelf: 'start',
           opacity: prevIsAvailable ? 1 : 0.3,
           cursor: prevIsAvailable ? 'pointer' : 'not-allowed',
         }}
@@ -68,6 +68,7 @@ export default function CalendarNav({ currentDate, todayDate, availableDates }: 
         title={nextIsFuture ? 'Future date' : 'Next day'}
         style={{
           ...navBtnStyle,
+          justifySelf: 'end',
           opacity: nextIsFuture ? 0.3 : 1,
           cursor: nextIsFuture ? 'not-allowed' : 'pointer',
         }}

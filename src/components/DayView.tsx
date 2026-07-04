@@ -31,18 +31,6 @@ export default function DayView({ dayReadings, availableDates }: Props) {
 
       {/* Liturgical day title */}
       <div style={{ textAlign: 'center', margin: '2.5rem 0 2rem' }}>
-        <div
-          style={{
-            fontFamily: 'Inter, system-ui, sans-serif',
-            fontSize: '0.7rem',
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            color: 'var(--text-muted)',
-            marginBottom: '0.5rem',
-          }}
-        >
-          Catholic Mass Readings
-        </div>
         <h1
           style={{
             fontFamily: "'Playfair Display', Georgia, serif",
