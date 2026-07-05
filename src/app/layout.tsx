@@ -19,7 +19,6 @@ export const metadata: Metadata = {
     'Scripture reflection',
     'daily readings',
   ],
-  icons: { icon: '/favicon.ico' },
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
