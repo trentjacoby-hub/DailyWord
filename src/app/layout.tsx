@@ -1,10 +1,44 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { SITE_URL, SITE_NAME, SITE_DESCRIPTION } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: "Today's Teachings — Catholic Readings, Reflection, & Analysis",
-  description: "Today's Teachings: daily Catholic Mass readings with AI-powered reflections following the liturgical calendar.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${SITE_NAME} — Catholic Readings, Reflection, & Analysis`,
+    template: `%s — ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: [
+    'Catholic Mass readings',
+    'daily Mass readings',
+    'liturgical calendar',
+    'Gospel reflection',
+    'Catholic devotional',
+    'Scripture reflection',
+    'daily readings',
+  ],
   icons: { icon: '/favicon.ico' },
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    title: `${SITE_NAME} — Catholic Readings, Reflection, & Analysis`,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `${SITE_NAME} — Catholic Readings, Reflection, & Analysis`,
+    description: SITE_DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

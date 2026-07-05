@@ -1,5 +1,6 @@
 import { DayReadings } from '@/types';
 import { formatDateISO, getTodayCST } from '@/lib/dates';
+import { SITE_URL, SITE_NAME } from '@/lib/site';
 import ReadingCard from './ReadingCard';
 import AnalysisCard from './AnalysisCard';
 import CalendarNav from './CalendarNav';
@@ -13,8 +14,32 @@ interface Props {
 export default function DayView({ dayReadings, availableDates }: Props) {
   const { liturgicalTitle, readings, analysis } = dayReadings;
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: liturgicalTitle,
+    description:
+      analysis?.overallMessage ??
+      `Catholic Mass readings and reflections for ${liturgicalTitle}.`,
+    datePublished: dayReadings.date,
+    dateModified: analysis?.analyzedAt ?? dayReadings.fetchedAt ?? dayReadings.date,
+    inLanguage: 'en-US',
+    isAccessibleForFree: true,
+    url: `${SITE_URL}/${dayReadings.date}`,
+    author: { '@type': 'Organization', name: SITE_NAME, url: SITE_URL },
+    publisher: { '@type': 'Organization', name: SITE_NAME, url: SITE_URL },
+    about: readings.map((r) => ({
+      '@type': 'CreativeWork',
+      name: r.reference ? `${r.title} — ${r.reference}` : r.title,
+    })),
+  };
+
   return (
     <>
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+    />
     <SiteHeader
       currentDate={dayReadings.date}
       todayDate={formatDateISO(getTodayCST())}

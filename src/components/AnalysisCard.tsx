@@ -73,7 +73,7 @@ export default function AnalysisCard({ analysis, index }: Props) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginTop: '1.25rem' }}>
-      <div
+      <h3
         style={{
           fontFamily: "'Playfair Display', Georgia, serif",
           fontSize: '0.85rem',
@@ -84,7 +84,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         }}
       >
         {title}
-      </div>
+      </h3>
       <div
         style={{
           fontFamily: "'Crimson Text', Georgia, serif",

@@ -29,7 +29,7 @@ export default function ReadingCard({ reading, index }: Props) {
       }}
     >
       {/* Reading type label */}
-      <div
+      <h2
         style={{
           fontFamily: 'Inter, system-ui, sans-serif',
           fontSize: '0.7rem',
@@ -41,7 +41,7 @@ export default function ReadingCard({ reading, index }: Props) {
         }}
       >
         {reading.title}
-      </div>
+      </h2>
 
       {/* Scripture reference */}
       <div
