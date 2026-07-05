@@ -12,7 +12,7 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
-    title: `Readings for ${params.date} — Daily Word`,
+    title: `Readings for ${params.date} — Today's Teachings`,
   };
 }
 

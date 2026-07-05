@@ -1,8 +1,8 @@
-# Daily Word — Site Objective
+# Today's Teachings — Site Objective
 
-## What Is Daily Word?
+## What Is Today's Teachings?
 
-Daily Word is a Catholic devotional website that presents the Roman Catholic Mass readings for each day of the liturgical calendar alongside AI-generated reflections designed to make Scripture more accessible, meaningful, and applicable to everyday life.
+Today's Teachings is a Catholic devotional website that presents the Roman Catholic Mass readings for each day of the liturgical calendar alongside AI-generated reflections designed to make Scripture more accessible, meaningful, and applicable to everyday life.
 
 ## The Problem It Solves
 
@@ -12,7 +12,7 @@ The Catholic Church assigns specific readings for every single day of the year t
 
 ## The Solution
 
-Daily Word bridges that gap by:
+Today's Teachings bridges that gap by:
 
 1. **Automatically pulling the day's readings** from the United States Conference of Catholic Bishops (USCCB) each morning at midnight CST — including the First Reading, Responsorial Psalm, and Gospel.
 
@@ -28,7 +28,7 @@ Daily Word bridges that gap by:
 
 ## Who It's For
 
-Daily Word is for any Catholic — or anyone curious about Catholic Scripture — who wants to:
+Today's Teachings is for any Catholic — or anyone curious about Catholic Scripture — who wants to:
 
 - Understand the daily Mass readings more deeply
 - Prepare for or reflect after attending Mass
@@ -44,4 +44,4 @@ Daily Word is for any Catholic — or anyone curious about Catholic Scripture �
 
 ## What It Is Not
 
-Daily Word is not a replacement for Mass, the Catechism, or official Church teaching. The AI reflections are aids to personal contemplation — starting points for prayer and meditation, not authoritative theological commentary.
+Today's Teachings is not a replacement for Mass, the Catechism, or official Church teaching. The AI reflections are aids to personal contemplation — starting points for prayer and meditation, not authoritative theological commentary.

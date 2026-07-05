@@ -65,7 +65,7 @@ export default function SiteHeader({ currentDate, todayDate, availableDates }: P
                 letterSpacing: '0.02em',
               }}
             >
-              Daily Word
+              Today's Teachings
             </span>
           </a>
         </div>
