@@ -1,9 +1,8 @@
 import { getTodayCST, formatDateISO, formatDateDisplay } from '@/lib/dates';
 import { getReadings, getProcessedDates } from '@/lib/storage';
-import { fetchReadingsForDate } from '@/lib/fetchReadings';
-import { analyzeReadings } from '@/lib/analyzeReadings';
-import { saveReadings } from '@/lib/storage';
+import { ensureDayReadings } from '@/lib/dayData';
 import DayView from '@/components/DayView';
+import type { DayReadings } from '@/types';
 import type { Metadata } from 'next';
 import { SITE_NAME } from '@/lib/site';
 
@@ -40,20 +39,18 @@ export default async function HomePage() {
   const today = getTodayCST();
   const isoDate = formatDateISO(today);
 
-  let dayReadings = await getReadings(isoDate);
-
-  // If not yet cached, or cached with empty readings (bad scrape), fetch + analyze now
-  if (!dayReadings || dayReadings.readings.length === 0) {
-    dayReadings = await fetchReadingsForDate(isoDate);
-    dayReadings.analysis = await analyzeReadings(dayReadings);
-    await saveReadings(dayReadings);
-  } else if (!dayReadings.analysis) {
-    try {
-      dayReadings.analysis = await analyzeReadings(dayReadings);
-      await saveReadings(dayReadings);
-    } catch {
-      // serve cached readings without analysis rather than crashing the page
-    }
+  // Returns cached readings+analysis, or fetches/analyzes on demand — guarded by
+  // a per-date lock so we never pay for more than one analysis per day.
+  let dayReadings: DayReadings;
+  try {
+    dayReadings = await ensureDayReadings(isoDate);
+  } catch {
+    // Fall back to whatever is cached rather than crashing the page.
+    dayReadings = (await getReadings(isoDate)) ?? {
+      date: isoDate,
+      liturgicalTitle: 'Daily Readings',
+      readings: [],
+    };
   }
 
   const availableDates = await getProcessedDates();

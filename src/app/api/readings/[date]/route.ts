@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getReadings, saveReadings } from '@/lib/storage';
-import { fetchReadingsForDate } from '@/lib/fetchReadings';
-import { analyzeReadings } from '@/lib/analyzeReadings';
+import { ensureDayReadings } from '@/lib/dayData';
 import { isFutureDate, isValidISODate } from '@/lib/dates';
 
 export const runtime = 'nodejs';
@@ -23,19 +21,9 @@ export async function GET(
   }
 
   try {
-    // Try cache first
-    let dayReadings = await getReadings(date);
-
-    if (!dayReadings || dayReadings.readings.length === 0) {
-      // Fetch and analyze (also re-fetches if a prior scrape returned empty readings)
-      dayReadings = await fetchReadingsForDate(date);
-      dayReadings.analysis = await analyzeReadings(dayReadings);
-      await saveReadings(dayReadings);
-    } else if (!dayReadings.analysis) {
-      dayReadings.analysis = await analyzeReadings(dayReadings);
-      await saveReadings(dayReadings);
-    }
-
+    // Serves cache, or fetches/analyzes on demand — guarded so at most one
+    // analysis runs per day even under concurrent requests.
+    const dayReadings = await ensureDayReadings(date);
     return NextResponse.json(dayReadings);
   } catch (err) {
     console.error('[readings API]', err);

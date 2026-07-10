@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getReadings, saveReadings } from '@/lib/storage';
-import { fetchReadingsForDate } from '@/lib/fetchReadings';
-import { analyzeReadings } from '@/lib/analyzeReadings';
+import { ensureDayReadings } from '@/lib/dayData';
 import { getTodayCST, formatDateISO } from '@/lib/dates';
 
 export const runtime = 'nodejs';
@@ -23,16 +21,15 @@ export async function GET(req: NextRequest) {
   const today = getTodayCST();
   const isoDate = formatDateISO(today);
 
-  // Skip if already processed
-  const existing = await getReadings(isoDate);
-  if (existing?.analysis) {
-    return NextResponse.json({ status: 'already_done', date: isoDate });
-  }
-
   try {
-    const dayReadings = await fetchReadingsForDate(isoDate);
-    dayReadings.analysis = await analyzeReadings(dayReadings);
-    await saveReadings(dayReadings);
+    // Idempotent + lock-guarded: skips if already analyzed, and won't collide
+    // with an on-demand analysis triggered by a visitor.
+    const dayReadings = await ensureDayReadings(isoDate);
+
+    if (dayReadings.readings.length === 0) {
+      // Source hasn't published yet — a later cron or visit will retry.
+      return NextResponse.json({ status: 'no_readings', date: isoDate });
+    }
 
     return NextResponse.json({ status: 'success', date: isoDate });
   } catch (err) {

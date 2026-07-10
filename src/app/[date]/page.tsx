@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation';
-import { getReadings, saveReadings, getProcessedDates } from '@/lib/storage';
-import { fetchReadingsForDate } from '@/lib/fetchReadings';
-import { analyzeReadings } from '@/lib/analyzeReadings';
+import { getReadings, getProcessedDates } from '@/lib/storage';
+import { ensureDayReadings } from '@/lib/dayData';
 import { isFutureDate, isValidISODate, formatDateDisplay } from '@/lib/dates';
 import DayView from '@/components/DayView';
+import type { DayReadings } from '@/types';
 import type { Metadata } from 'next';
 
 interface Props {
@@ -55,24 +55,16 @@ export default async function DatePage({ params }: Props) {
   // Don't serve future dates
   if (isFutureDate(date)) notFound();
 
-  let dayReadings = await getReadings(date);
-
-  if (!dayReadings || dayReadings.readings.length === 0) {
-    try {
-      dayReadings = await fetchReadingsForDate(date);
-      dayReadings.analysis = await analyzeReadings(dayReadings);
-      await saveReadings(dayReadings);
-    } catch {
-      notFound();
-    }
-  } else if (!dayReadings.analysis) {
-    try {
-      dayReadings.analysis = await analyzeReadings(dayReadings);
-      await saveReadings(dayReadings);
-    } catch {
-      // serve cached readings without analysis rather than crashing the page
-    }
+  // Serves cache, or fetches/analyzes on demand — guarded so at most one
+  // analysis runs per day even under concurrent crawlers/visitors.
+  let dayReadings: DayReadings;
+  try {
+    dayReadings = await ensureDayReadings(date);
+  } catch {
+    notFound();
   }
+
+  if (dayReadings.readings.length === 0) notFound();
 
   const availableDates = await getProcessedDates();
 

@@ -29,3 +29,19 @@ export async function saveReadings(dayReadings: DayReadings): Promise<void> {
 export async function getProcessedDates(): Promise<string[]> {
   return (await kv.get<string[]>(DATES_INDEX_KEY)) ?? [];
 }
+
+const LOCK_PREFIX = 'lock:analyze:';
+const LOCK_TTL_SECONDS = 120; // > function maxDuration (60s), so a crashed worker's lock auto-expires
+
+/**
+ * Acquire a short-lived per-date lock so only one worker fetches/analyzes a day.
+ * Returns true if the lock was acquired, false if another worker already holds it.
+ */
+export async function acquireAnalysisLock(isoDate: string): Promise<boolean> {
+  const res = await kv.set(`${LOCK_PREFIX}${isoDate}`, '1', { nx: true, ex: LOCK_TTL_SECONDS });
+  return res !== null; // 'OK' when set, null when the key already exists
+}
+
+export async function releaseAnalysisLock(isoDate: string): Promise<void> {
+  await kv.del(`${LOCK_PREFIX}${isoDate}`);
+}
