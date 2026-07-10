@@ -65,7 +65,7 @@ export default function CalendarNav({ currentDate, todayDate, availableDates }: 
       <button
         onClick={() => !nextIsFuture && navigate(nextDate)}
         disabled={nextIsFuture}
-        title={nextIsFuture ? 'Future date' : 'Next day'}
+        title={nextIsFuture ? 'Generates At Midnight Tomorrow' : 'Next day'}
         style={{
           ...navBtnStyle,
           justifySelf: 'end',
