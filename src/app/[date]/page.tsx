@@ -6,6 +6,11 @@ import DayView from '@/components/DayView';
 import type { DayReadings } from '@/types';
 import type { Metadata } from 'next';
 
+export const runtime = 'nodejs';
+// Room for today's on-demand analysis to finish and save (past dates are
+// cache-only and return fast). Matches the API routes.
+export const maxDuration = 60;
+
 interface Props {
   params: { date: string };
 }

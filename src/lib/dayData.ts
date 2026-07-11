@@ -4,10 +4,17 @@ import {
   saveReadings,
   acquireAnalysisLock,
   releaseAnalysisLock,
+  bumpDailyAnalysisCount,
 } from './storage';
 import { fetchReadingsForDate } from './fetchReadings';
 import { analyzeReadings } from './analyzeReadings';
 import { getTodayCST, formatDateISO } from './dates';
+
+// Absolute ceiling on paid analyses per day. A normal day needs exactly one;
+// the headroom covers a retry or two if a scrape was empty then republished.
+// Because ALL Claude spend flows through the single call site below, this caps
+// worst-case daily cost no matter what bug or abuse path reaches it.
+const MAX_DAILY_ANALYSES = 5;
 
 function isComplete(day: DayReadings | null): day is DayReadings {
   return !!day && !!day.analysis && day.readings.length > 0;
@@ -54,6 +61,19 @@ export async function ensureDayReadings(isoDate: string): Promise<DayReadings | 
     // Don't burn an analysis on an empty scrape (source not published yet).
     // Leave it unsaved so a later request retries once the readings appear.
     if (day.readings.length === 0) return day;
+
+    // Absolute safety cap. Incremented under the lock (today-only path), so it's
+    // race-free. Once the daily ceiling is hit we serve readings WITHOUT analysis
+    // rather than spend — a hard stop that bounds cost even if everything else fails.
+    const attempt = await bumpDailyAnalysisCount(isoDate);
+    if (attempt > MAX_DAILY_ANALYSES) {
+      console.error(
+        `[dayData] daily analysis cap (${MAX_DAILY_ANALYSES}) hit for ${isoDate}; ` +
+          `serving readings without analysis (attempt ${attempt})`
+      );
+      return day;
+    }
+    console.log(`[dayData] analyzing ${isoDate} (attempt ${attempt}/${MAX_DAILY_ANALYSES})`);
 
     day.analysis = await analyzeReadings(day);
     await saveReadings(day);

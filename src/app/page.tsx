@@ -7,6 +7,10 @@ import type { Metadata } from 'next';
 import { SITE_NAME } from '@/lib/site';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+// Give on-demand analysis room to finish and save, so it isn't killed mid-call
+// and retried (which would waste tokens). Matches the API routes.
+export const maxDuration = 60;
 
 export async function generateMetadata(): Promise<Metadata> {
   const todayISO = formatDateISO(getTodayCST());
