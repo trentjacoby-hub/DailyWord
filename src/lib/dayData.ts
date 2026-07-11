@@ -7,26 +7,40 @@ import {
 } from './storage';
 import { fetchReadingsForDate } from './fetchReadings';
 import { analyzeReadings } from './analyzeReadings';
+import { getTodayCST, formatDateISO } from './dates';
 
 function isComplete(day: DayReadings | null): day is DayReadings {
   return !!day && !!day.analysis && day.readings.length > 0;
 }
 
 /**
- * Returns a day's readings with analysis, fetching and analyzing on demand if
- * needed. A per-date KV lock ensures at most ONE analysis runs per day, even
- * under concurrent requests or an empty-then-published scrape — so we never pay
- * for duplicate Claude analyses. Shared by the cron, the homepage, and the API.
+ * Returns a day's readings with analysis.
+ *
+ * On-demand fetch + Claude analysis happens ONLY for today (and via the cron).
+ * Past dates are cache-only: if a past date isn't already stored, this returns
+ * null rather than analyzing it. That closes the token hole where any visitor or
+ * crawler hitting a `/YYYY-MM-DD` URL could trigger a paid analysis for every
+ * date in the calendar range. Legit users never hit this — the "Previous" button
+ * is disabled for dates that aren't already cached.
+ *
+ * For today, a per-date KV lock ensures at most one analysis runs even under
+ * concurrent requests.
  */
-export async function ensureDayReadings(isoDate: string): Promise<DayReadings> {
+export async function ensureDayReadings(isoDate: string): Promise<DayReadings | null> {
   const cached = await getReadings(isoDate);
   if (isComplete(cached)) return cached;
 
-  // Only one worker fetches/analyzes at a time. If we can't get the lock,
-  // another request is already doing it — serve the cache if we have one,
-  // otherwise a readings-only scrape (no analysis, no Claude cost).
+  const todayISO = formatDateISO(getTodayCST());
+  if (isoDate !== todayISO) {
+    // Past date with no complete cache → do NOT generate on demand.
+    return cached;
+  }
+
+  // Today only: generate on demand, guarded so one worker analyzes at a time.
   const gotLock = await acquireAnalysisLock(isoDate);
   if (!gotLock) {
+    // Another request is analyzing today — serve cache, else a readings-only
+    // scrape (no analysis, no Claude cost).
     return cached ?? (await fetchReadingsForDate(isoDate));
   }
 

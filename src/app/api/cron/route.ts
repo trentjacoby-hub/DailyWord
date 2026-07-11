@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     // with an on-demand analysis triggered by a visitor.
     const dayReadings = await ensureDayReadings(isoDate);
 
-    if (dayReadings.readings.length === 0) {
+    if (!dayReadings || dayReadings.readings.length === 0) {
       // Source hasn't published yet — a later cron or visit will retry.
       return NextResponse.json({ status: 'no_readings', date: isoDate });
     }

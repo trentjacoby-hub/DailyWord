@@ -21,9 +21,15 @@ export async function GET(
   }
 
   try {
-    // Serves cache, or fetches/analyzes on demand — guarded so at most one
-    // analysis runs per day even under concurrent requests.
+    // Today generates on demand (lock-guarded); past dates are cache-only, so
+    // an uncached past date returns null here and we 404 instead of analyzing.
     const dayReadings = await ensureDayReadings(date);
+    if (!dayReadings || dayReadings.readings.length === 0) {
+      return NextResponse.json(
+        { error: 'Readings not available for this date.' },
+        { status: 404 }
+      );
+    }
     return NextResponse.json(dayReadings);
   } catch (err) {
     console.error('[readings API]', err);

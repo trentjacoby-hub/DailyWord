@@ -55,16 +55,17 @@ export default async function DatePage({ params }: Props) {
   // Don't serve future dates
   if (isFutureDate(date)) notFound();
 
-  // Serves cache, or fetches/analyzes on demand — guarded so at most one
-  // analysis runs per day even under concurrent crawlers/visitors.
-  let dayReadings: DayReadings;
+  // Past dates are cache-only: ensureDayReadings returns null for an uncached
+  // past date instead of triggering a paid analysis. Only today generates on
+  // demand. Uncached past dates (only reachable by guessed URLs/crawlers) 404.
+  let dayReadings: DayReadings | null;
   try {
     dayReadings = await ensureDayReadings(date);
   } catch {
     notFound();
   }
 
-  if (dayReadings.readings.length === 0) notFound();
+  if (!dayReadings || dayReadings.readings.length === 0) notFound();
 
   const availableDates = await getProcessedDates();
 

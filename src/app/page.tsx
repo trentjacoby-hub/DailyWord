@@ -41,16 +41,14 @@ export default async function HomePage() {
 
   // Returns cached readings+analysis, or fetches/analyzes on demand — guarded by
   // a per-date lock so we never pay for more than one analysis per day.
+  const emptyDay: DayReadings = { date: isoDate, liturgicalTitle: 'Daily Readings', readings: [] };
   let dayReadings: DayReadings;
   try {
-    dayReadings = await ensureDayReadings(isoDate);
+    // Homepage is always today, so this generates on demand if needed.
+    dayReadings = (await ensureDayReadings(isoDate)) ?? emptyDay;
   } catch {
     // Fall back to whatever is cached rather than crashing the page.
-    dayReadings = (await getReadings(isoDate)) ?? {
-      date: isoDate,
-      liturgicalTitle: 'Daily Readings',
-      readings: [],
-    };
+    dayReadings = (await getReadings(isoDate)) ?? emptyDay;
   }
 
   const availableDates = await getProcessedDates();
