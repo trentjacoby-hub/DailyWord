@@ -1,10 +1,15 @@
 import { notFound } from 'next/navigation';
-import { getReadings, saveReadings, getProcessedDates } from '@/lib/storage';
-import { fetchReadingsForDate } from '@/lib/fetchReadings';
-import { analyzeReadings } from '@/lib/analyzeReadings';
+import { getReadings, getProcessedDates } from '@/lib/storage';
+import { ensureDayReadings } from '@/lib/dayData';
 import { isFutureDate, isValidISODate, formatDateDisplay } from '@/lib/dates';
 import DayView from '@/components/DayView';
+import type { DayReadings } from '@/types';
 import type { Metadata } from 'next';
+
+export const runtime = 'nodejs';
+// Room for today's on-demand analysis to finish and save (past dates are
+// cache-only and return fast). Matches the API routes.
+export const maxDuration = 60;
 
 interface Props {
   params: { date: string };
@@ -55,24 +60,17 @@ export default async function DatePage({ params }: Props) {
   // Don't serve future dates
   if (isFutureDate(date)) notFound();
 
-  let dayReadings = await getReadings(date);
-
-  if (!dayReadings || dayReadings.readings.length === 0) {
-    try {
-      dayReadings = await fetchReadingsForDate(date);
-      dayReadings.analysis = await analyzeReadings(dayReadings);
-      await saveReadings(dayReadings);
-    } catch {
-      notFound();
-    }
-  } else if (!dayReadings.analysis) {
-    try {
-      dayReadings.analysis = await analyzeReadings(dayReadings);
-      await saveReadings(dayReadings);
-    } catch {
-      // serve cached readings without analysis rather than crashing the page
-    }
+  // Past dates are cache-only: ensureDayReadings returns null for an uncached
+  // past date instead of triggering a paid analysis. Only today generates on
+  // demand. Uncached past dates (only reachable by guessed URLs/crawlers) 404.
+  let dayReadings: DayReadings | null;
+  try {
+    dayReadings = await ensureDayReadings(date);
+  } catch {
+    notFound();
   }
+
+  if (!dayReadings || dayReadings.readings.length === 0) notFound();
 
   const availableDates = await getProcessedDates();
 

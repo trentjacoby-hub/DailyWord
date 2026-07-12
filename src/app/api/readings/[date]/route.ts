@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getReadings, saveReadings } from '@/lib/storage';
-import { fetchReadingsForDate } from '@/lib/fetchReadings';
-import { analyzeReadings } from '@/lib/analyzeReadings';
+import { ensureDayReadings } from '@/lib/dayData';
 import { isFutureDate, isValidISODate } from '@/lib/dates';
 
 export const runtime = 'nodejs';
@@ -23,19 +21,15 @@ export async function GET(
   }
 
   try {
-    // Try cache first
-    let dayReadings = await getReadings(date);
-
+    // Today generates on demand (lock-guarded); past dates are cache-only, so
+    // an uncached past date returns null here and we 404 instead of analyzing.
+    const dayReadings = await ensureDayReadings(date);
     if (!dayReadings || dayReadings.readings.length === 0) {
-      // Fetch and analyze (also re-fetches if a prior scrape returned empty readings)
-      dayReadings = await fetchReadingsForDate(date);
-      dayReadings.analysis = await analyzeReadings(dayReadings);
-      await saveReadings(dayReadings);
-    } else if (!dayReadings.analysis) {
-      dayReadings.analysis = await analyzeReadings(dayReadings);
-      await saveReadings(dayReadings);
+      return NextResponse.json(
+        { error: 'Readings not available for this date.' },
+        { status: 404 }
+      );
     }
-
     return NextResponse.json(dayReadings);
   } catch (err) {
     console.error('[readings API]', err);
