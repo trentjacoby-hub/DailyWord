@@ -1,4 +1,42 @@
-import { kv } from '@vercel/kv';
+import { createClient } from '@vercel/kv';
+import type { RedisConfigNodejs } from '@upstash/redis';
+
+/**
+ * KV client that bypasses Next's Data Cache.
+ *
+ * @vercel/kv's default client sets `cache: "default"` on its fetch (it
+ * deliberately overrides @upstash/redis's "no-store"). Under Next 14 that makes
+ * every KV read a cacheable fetch, so a read that happened before a key existed
+ * is cached as null and served forever after the key is written.
+ *
+ * That is exactly what broke 2026-11-08: the key was read at 16:28, written at
+ * 16:34 by /api/ingest, and every later read in a cacheable request kept
+ * returning the cached null -- while a raw REST GET to the same database
+ * returned the record. `cache: "no-store"` makes reads always hit Upstash.
+ *
+ * `cache` is a valid fetch option passed through to the underlying client but
+ * is absent from RedisConfigNodejs, hence the cast.
+ */
+let _kv: ReturnType<typeof createClient> | null = null;
+function getKv() {
+  if (!_kv) {
+    const url = process.env.KV_REST_API_URL;
+    const token = process.env.KV_REST_API_TOKEN;
+    if (!url || !token) {
+      throw new Error('Missing KV_REST_API_URL / KV_REST_API_TOKEN');
+    }
+    _kv = createClient({ url, token, cache: 'no-store' } as RedisConfigNodejs & {
+      cache: RequestCache;
+    });
+  }
+  return _kv;
+}
+
+const kv = new Proxy({} as ReturnType<typeof createClient>, {
+  get(_t, prop) {
+    return Reflect.get(getKv(), prop);
+  },
+});
 import { DayReadings } from '@/types';
 
 const READINGS_PREFIX = 'readings:';
