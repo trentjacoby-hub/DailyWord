@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { date: string } }
 ) {
   const { date } = params;
@@ -36,8 +36,30 @@ export async function GET(
     return NextResponse.json(dayReadings);
   } catch (err) {
     console.error('[readings API]', err);
+
+    // Secret-gated detail. Production logs are not readable from the dev
+    // machine, so ?debug=<INGEST_SECRET|CRON_SECRET> surfaces the real cause.
+    // Gated so a public caller still only sees the generic message.
+    const secret = process.env.INGEST_SECRET || process.env.CRON_SECRET;
+    const wantsDebug = !!secret && req.nextUrl.searchParams.get('debug') === secret;
+
     return NextResponse.json(
-      { error: 'Failed to fetch or analyze readings.' },
+      {
+        error: 'Failed to fetch or analyze readings.',
+        ...(wantsDebug
+          ? {
+              debug: {
+                message: err instanceof Error ? err.message : String(err),
+                stack: err instanceof Error ? err.stack?.split(/\r?\n/).slice(0, 6) : undefined,
+                kvUrlHost: (() => {
+                  try { return new URL(process.env.KV_REST_API_URL ?? '').host; } catch { return null; }
+                })(),
+                hasKvToken: !!process.env.KV_REST_API_TOKEN,
+                serverToday: new Date().toISOString(),
+              },
+            }
+          : {}),
+      },
       { status: 500 }
     );
   }
