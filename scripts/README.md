@@ -116,11 +116,51 @@ failure, so the task history reflects real outcomes.
 
 | Status | Meaning |
 |---|---|
-| `analyzed` | Fetched, parsed, analyzed, stored. The normal path. |
-| `already_complete` | That date was already done. No spend. |
+| `analyzed` | Every reading plus the reflection is done and stored. The normal path. |
+| `analyzed_partial` | Some pieces failed. What succeeded is stored and paid for once; a later run fills only the gaps. Check `issues`. |
+| `already_complete` | That date was already finished. **No spend.** |
 | `no_readings` (HTTP 422) | Parsed 0 readings — source unpublished, **or the markup changed and the parser needs updating**. |
-| `cap_reached` | Hit the per-date analysis cap. Nothing spent. |
+| `cap_reached` | The date's call budget is used up. **Nothing spent.** |
 | `locked` | Another push is mid-analysis for that date. Harmless. |
 
-A persistent `no_readings` is the signal that CatholicGallery changed their
-HTML — fix `parseReadingsHtml` in `src/lib/fetchReadings.ts` and redeploy.
+Every response carries `callsUsed` for the date, and `issues` when something
+failed. A persistent `no_readings` means CatholicGallery changed their HTML —
+fix `parseReadingsHtml` in `src/lib/fetchReadings.ts` and redeploy.
+
+## How spend is bounded
+
+Cost is budgeted in **Claude calls per date**, not per run, because calls are
+what cost money.
+
+- A date needs exactly **readings + 1** calls: one per reading, one for the
+  unifying reflection. A weekday is 3, a Sunday 4.
+- Work that succeeds is **written to KV immediately** and **never requested
+  again**. A resumed run pays only for the pieces that are actually missing.
+- A failed piece can no longer discard its billed siblings — each call is
+  isolated, and a failure returns a reason instead of throwing.
+- The hard ceiling per date is **readings + 1 + 3**. That headroom can only be
+  consumed by pieces that failed; it cannot be spent redoing something already
+  stored.
+- Each request reserves a slot before it is issued, under a per-date lock. A
+  reservation that the budget refuses is handed back, so the counter stays an
+  honest count of requests actually made.
+
+**The only code path that can spend money is `POST /api/ingest`, which requires
+the secret.** Page views and the Vercel cron are cache-only and can never
+trigger an analysis, no matter how many times they run.
+
+Two consequences worth knowing:
+
+- Running the pusher repeatedly for a finished day is free — it short-circuits
+  on `already_complete`. This is why two daily triggers are safe, and why a
+  second machine costs nothing.
+- `--force` deliberately re-analyzes a stored day and **does spend again**,
+  within the date's budget. Use it only to repair a bad analysis.
+
+To block all spend for a date by hand, set its counter above the ceiling:
+
+```
+SET analyze:calls:<YYYY-MM-DD> 999
+```
+
+To allow a blocked date to run again, delete that key.

@@ -99,6 +99,7 @@ export async function releaseAnalysisLock(isoDate: string): Promise<void> {
 }
 
 const ANALYSIS_CALL_PREFIX = 'analyze:calls:';
+const ANALYSIS_COUNT_TTL_SECONDS = 60 * 60 * 48; // 2 days — the per-date key resets daily
 
 /**
  * Atomically increment and return the number of Claude CALLS made for a date.
@@ -129,19 +130,3 @@ export async function getAnalysisCallCount(isoDate: string): Promise<number> {
   return (await kv.get<number>(`${ANALYSIS_CALL_PREFIX}${isoDate}`)) ?? 0;
 }
 
-const ANALYSIS_COUNT_PREFIX = 'analyze:count:';
-const ANALYSIS_COUNT_TTL_SECONDS = 60 * 60 * 48; // 2 days — the per-date key resets daily
-
-/**
- * Atomically increment and return the number of analyses attempted for a date.
- * Used as an absolute daily spend cap: the caller refuses to analyze once this
- * exceeds the configured limit, bounding worst-case cost regardless of cause.
- */
-export async function bumpDailyAnalysisCount(isoDate: string): Promise<number> {
-  const key = `${ANALYSIS_COUNT_PREFIX}${isoDate}`;
-  const count = await kv.incr(key);
-  if (count === 1) {
-    await kv.expire(key, ANALYSIS_COUNT_TTL_SECONDS);
-  }
-  return count;
-}
