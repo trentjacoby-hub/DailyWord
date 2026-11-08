@@ -1,110 +1,190 @@
-import { DayReadings } from '@/types';
+import { DayReadings, ReadingAnalysis } from '@/types';
 import {
   getReadings,
   saveReadings,
   acquireAnalysisLock,
   releaseAnalysisLock,
-  bumpDailyAnalysisCount,
+  bumpAnalysisCallCount,
+  releaseAnalysisCallSlot,
+  getAnalysisCallCount,
 } from './storage';
-import { analyzeReadings } from './analyzeReadings';
+import {
+  analyzeOneReading,
+  generateOverallMessage,
+  blankAnalysis,
+  isReadingAnalyzed,
+  readingKey,
+  type CallGate,
+} from './analyzeReadings';
 
-// Absolute ceiling on paid analyses per DATE. A normal day needs exactly one;
-// the headroom covers a single retry if a scrape was empty then republished, and
-// lets a second push client (e.g. a backup machine) trigger the same day safely.
-// Because ALL Claude spend flows through the single call site below, this caps
-// worst-case cost per date no matter what bug or abuse path reaches it.
-const MAX_DAILY_ANALYSES = 2;
+/**
+ * Spend headroom, in Claude CALLS, on top of the minimum a date needs.
+ *
+ * A date needs exactly (readings + 1) calls: one per reading plus the unifying
+ * reflection. Work that succeeds is persisted immediately and never requested
+ * again, so this headroom is only ever consumed by pieces that actually failed
+ * — it cannot be spent re-doing something already paid for.
+ *
+ * Worst case per date is therefore (readings + 1 + 3) calls, and the normal
+ * case is exactly (readings + 1).
+ */
+const RETRY_HEADROOM = 3;
 
 export type IngestStatus =
   | 'analyzed'
+  | 'analyzed_partial'
   | 'already_complete'
   | 'no_readings'
   | 'locked'
   | 'cap_reached';
 
+/** Complete = every reading analyzed AND the unifying reflection present. */
 function isComplete(day: DayReadings | null): day is DayReadings {
-  return !!day && !!day.analysis && day.readings.length > 0;
+  if (!day || day.readings.length === 0 || !day.analysis) return false;
+  if (!day.analysis.overallMessage?.trim()) return false;
+  return day.readings.every((r) => {
+    const a = day.analysis!.readings.find((x) => x.readingTitle === readingKey(r));
+    return isReadingAnalyzed(a);
+  });
 }
 
 /**
- * Analyze and store an already-scraped day.
+ * Carry any analysis already stored for this date onto a freshly scraped day,
+ * so previously paid-for work survives a re-push of the same date.
+ */
+function mergeStoredAnalysis(fresh: DayReadings, stored: DayReadings | null): DayReadings {
+  if (!stored?.analysis) return fresh;
+  return { ...fresh, analysis: stored.analysis };
+}
+
+function priorFor(day: DayReadings, key: string): ReadingAnalysis | undefined {
+  return day.analysis?.readings.find((a) => a.readingTitle === key);
+}
+
+/**
+ * Analyze and store a day, resuming rather than restarting.
  *
- * This is the single paid code path. Both entry points funnel through it:
- *  - /api/ingest, when a home machine pushes HTML it scraped (the working route)
- *  - ensureDayReadings, when the server scrapes directly (blocked in prod today)
- *
- * Idempotent and lock-guarded, so running it twice for the same date — two push
- * machines, or a push racing the cron — costs nothing the second time.
+ * This is the single paid code path, reached from /api/ingest. Guarantees:
+ *  - a reading whose analysis is already stored is NEVER re-requested;
+ *  - every success is persisted immediately, so a later failure cannot discard
+ *    work that was already billed;
+ *  - total Claude calls for a date are hard-capped (see RETRY_HEADROOM), with
+ *    the counter incremented before each request under a per-date lock.
  */
 export async function analyzeAndSaveDay(
   day: DayReadings,
   opts: { force?: boolean } = {}
-): Promise<{ status: IngestStatus; day: DayReadings }> {
+): Promise<{ status: IngestStatus; day: DayReadings; detail?: string[] }> {
   if (day.readings.length === 0) return { status: 'no_readings', day };
 
-  const existing = await getReadings(day.date);
-  if (isComplete(existing) && !opts.force) {
-    return { status: 'already_complete', day: existing };
+  const stored = await getReadings(day.date);
+  let working = mergeStoredAnalysis(day, stored);
+  if (isComplete(working) && !opts.force) {
+    return { status: 'already_complete', day: working };
   }
 
   const gotLock = await acquireAnalysisLock(day.date);
-  if (!gotLock) return { status: 'locked', day };
+  if (!gotLock) return { status: 'locked', day: working };
 
   try {
-    // Re-check: another worker may have finished between our read and the lock.
-    const fresh = await getReadings(day.date);
-    if (isComplete(fresh) && !opts.force) {
-      return { status: 'already_complete', day: fresh };
+    // Re-check under the lock: another worker may have finished meanwhile.
+    working = mergeStoredAnalysis(day, await getReadings(day.date));
+    if (isComplete(working) && !opts.force) {
+      return { status: 'already_complete', day: working };
     }
 
-    // Absolute safety cap, incremented under the lock so it's race-free. The
-    // counter is per-date, so a backfill of old dates each get their own budget.
-    // `force` does NOT bypass this — it only permits re-analyzing a complete day.
-    const attempt = await bumpDailyAnalysisCount(day.date);
-    if (attempt > MAX_DAILY_ANALYSES) {
-      console.error(
-        `[dayData] analysis cap (${MAX_DAILY_ANALYSES}) hit for ${day.date}; ` +
-          `refusing to spend (attempt ${attempt})`
+    const budget = working.readings.length + 1 + RETRY_HEADROOM;
+    // Reserve a slot before each request; hand it back if the budget says no,
+    // so the counter stays an honest count of requests actually issued.
+    const gate: CallGate = async () => {
+      const n = await bumpAnalysisCallCount(working.date);
+      if (n <= budget) return true;
+      await releaseAnalysisCallSlot(working.date);
+      return false;
+    };
+
+    const notes: string[] = [];
+    const results: ReadingAnalysis[] = [];
+
+    for (const reading of working.readings) {
+      const key = readingKey(reading);
+      const prior = priorFor(working, key);
+
+      // Already paid for — reuse, never re-request.
+      if (isReadingAnalyzed(prior) && !opts.force) {
+        results.push(prior!);
+        continue;
+      }
+
+      const { analysis, reason } = await analyzeOneReading(reading, working.liturgicalTitle, gate);
+
+      if (analysis) {
+        results.push(analysis);
+      } else {
+        results.push(prior ?? blankAnalysis(key));
+        notes.push(`${key}: ${reason ?? 'failed'}`);
+      }
+
+      // Persist after each reading so a later failure cannot lose this spend.
+      working.analysis = {
+        readings: results.slice(),
+        overallMessage: working.analysis?.overallMessage ?? '',
+        analyzedAt: new Date().toISOString(),
+      };
+      await saveReadings(working);
+    }
+
+    // Unifying reflection, only if it isn't already stored.
+    if (!working.analysis?.overallMessage?.trim() || opts.force) {
+      const { message, reason } = await generateOverallMessage(
+        working.liturgicalTitle,
+        results,
+        gate
       );
-      return { status: 'cap_reached', day };
+      if (message) {
+        working.analysis = { ...working.analysis!, overallMessage: message };
+        await saveReadings(working);
+      } else {
+        notes.push(`overall message: ${reason ?? 'failed'}`);
+      }
     }
-    console.log(`[dayData] analyzing ${day.date} (attempt ${attempt}/${MAX_DAILY_ANALYSES})`);
 
-    day.analysis = await analyzeReadings(day);
-    await saveReadings(day);
-    return { status: 'analyzed', day };
+    const complete = isComplete(working);
+    const callsUsed = await getAnalysisCallCount(working.date);
+
+    if (!complete && notes.length) {
+      console.error(
+        `[dayData] ${working.date} incomplete after ${callsUsed}/${budget} calls: ${notes.join(' | ')}`
+      );
+    } else {
+      console.log(`[dayData] ${working.date} complete using ${callsUsed}/${budget} calls`);
+    }
+
+    if (!complete && callsUsed >= budget) {
+      return { status: 'cap_reached', day: working, detail: notes };
+    }
+    return {
+      status: complete ? 'analyzed' : 'analyzed_partial',
+      day: working,
+      detail: notes.length ? notes : undefined,
+    };
   } finally {
     await releaseAnalysisLock(day.date);
   }
 }
 
 /**
- * Returns a day's readings with analysis.
+ * Cache-only read for the request path, for every date including today.
  *
- * On-demand fetch + Claude analysis happens ONLY for today (and via the cron).
- * Past dates are cache-only: if a past date isn't already stored, this returns
- * null rather than analyzing it. That closes the token hole where any visitor or
- * crawler hitting a `/YYYY-MM-DD` URL could trigger a paid analysis for every
- * date in the calendar range. Legit users never hit this — the "Previous" button
- * is disabled for dates that aren't already cached.
+ * Nothing in a user request scrapes or analyzes: CatholicGallery's Cloudflare
+ * returns 403 to Vercel IPs, and generation happens exclusively through
+ * /api/ingest, fed by a machine on a residential connection. A miss here means
+ * "not pushed yet", not "go and fetch it". See scripts/README.md.
  */
 export async function ensureDayReadings(isoDate: string): Promise<DayReadings | null> {
-  // Belt-and-braces against a null read being mistaken for "no data". The
-  // known cause (Next caching @vercel/kv's fetch) is fixed in storage.ts; this
-  // second read costs one KV round trip only on a miss, and keeps a transient
-  // null from presenting a stored day as missing.
-  let cached = await getReadings(isoDate);
-  if (cached === null) {
-    cached = await getReadings(isoDate);
-  }
-
-  // Cache-only in the request path, for every date including today.
-  //
-  // The direct scrape cannot work from Vercel -- CatholicGallery's Cloudflare
-  // returns 403 to datacenter IPs (confirmed in prod). Attempting it here only
-  // converted "not ready yet" into a thrown 403, which surfaced as a 500 on
-  // this API and a 404 on /[date] for days that were actually present.
-  // Generation happens exclusively through /api/ingest, fed by a machine on a
-  // residential connection. See scripts/README.md.
-  return cached;
+  // Belt-and-braces against a null read being mistaken for "no data". The known
+  // cause (Next caching @vercel/kv's fetch) is fixed in storage.ts; this second
+  // read costs one KV round trip only on a miss.
+  const cached = await getReadings(isoDate);
+  return cached === null ? await getReadings(isoDate) : cached;
 }

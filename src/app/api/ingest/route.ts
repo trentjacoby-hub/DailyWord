@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 import { parseReadingsHtml } from '@/lib/fetchReadings';
 import { analyzeAndSaveDay } from '@/lib/dayData';
+import { getAnalysisCallCount } from '@/lib/storage';
 import { isValidISODate, isFutureDate } from '@/lib/dates';
 
 export const runtime = 'nodejs';
@@ -83,9 +84,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { status, day: saved } = await analyzeAndSaveDay(day, { force: force === true });
+    const { status, day: saved, detail } = await analyzeAndSaveDay(day, { force: force === true });
 
     console.log(`[ingest] ${date} → ${status} (${day.readings.length} readings)`);
+    if (detail?.length) console.error(`[ingest] ${date} issues: ${detail.join(' | ')}`);
 
     return NextResponse.json({
       status,
@@ -93,6 +95,8 @@ export async function POST(req: NextRequest) {
       liturgicalTitle: saved.liturgicalTitle,
       readings: saved.readings.map((r) => `${r.title} — ${r.reference}`),
       analyzed: !!saved.analysis,
+      callsUsed: await getAnalysisCallCount(date),
+      ...(detail?.length ? { issues: detail } : {}),
     });
   } catch (err) {
     console.error('[ingest]', err);

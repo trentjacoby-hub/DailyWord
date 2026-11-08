@@ -98,6 +98,37 @@ export async function releaseAnalysisLock(isoDate: string): Promise<void> {
   await kv.del(`${LOCK_PREFIX}${isoDate}`);
 }
 
+const ANALYSIS_CALL_PREFIX = 'analyze:calls:';
+
+/**
+ * Atomically increment and return the number of Claude CALLS made for a date.
+ *
+ * Calls, not runs, are the unit that costs money. Counting them lets a later
+ * run top up the pieces that failed without the budget being spent by pieces
+ * that already succeeded (those are never re-requested -- see dayData).
+ */
+export async function bumpAnalysisCallCount(isoDate: string): Promise<number> {
+  const key = `${ANALYSIS_CALL_PREFIX}${isoDate}`;
+  const count = await kv.incr(key);
+  if (count === 1) {
+    await kv.expire(key, ANALYSIS_COUNT_TTL_SECONDS);
+  }
+  return count;
+}
+
+/**
+ * Hand back a slot taken by an INCR that did not result in a request.
+ * Safe because every gate call happens under the per-date analysis lock, so
+ * there is only one worker incrementing this key at a time.
+ */
+export async function releaseAnalysisCallSlot(isoDate: string): Promise<void> {
+  await kv.decr(`${ANALYSIS_CALL_PREFIX}${isoDate}`);
+}
+
+export async function getAnalysisCallCount(isoDate: string): Promise<number> {
+  return (await kv.get<number>(`${ANALYSIS_CALL_PREFIX}${isoDate}`)) ?? 0;
+}
+
 const ANALYSIS_COUNT_PREFIX = 'analyze:count:';
 const ANALYSIS_COUNT_TTL_SECONDS = 60 * 60 * 48; // 2 days — the per-date key resets daily
 
