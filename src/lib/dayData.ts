@@ -88,30 +88,15 @@ export async function analyzeAndSaveDay(
  * date in the calendar range. Legit users never hit this — the "Previous" button
  * is disabled for dates that aren't already cached.
  */
-let lastDecision: Record<string, unknown> | null = null;
-export function getLastDecision() {
-  return lastDecision;
-}
-
 export async function ensureDayReadings(isoDate: string): Promise<DayReadings | null> {
-  // Read-your-write guard. A first kv.get in a request has been observed
-  // returning null for a key that exists (confirmed in prod: the same key read
-  // again ~1s later in the same request returns the full record). Treat a null
-  // on the first read as inconclusive and confirm before acting on it.
+  // Belt-and-braces against a null read being mistaken for "no data". The
+  // known cause (Next caching @vercel/kv's fetch) is fixed in storage.ts; this
+  // second read costs one KV round trip only on a miss, and keeps a transient
+  // null from presenting a stored day as missing.
   let cached = await getReadings(isoDate);
   if (cached === null) {
     cached = await getReadings(isoDate);
   }
-
-  const complete = isComplete(cached);
-  lastDecision = {
-    isoDate,
-    cachedTruthy: !!cached,
-    hasAnalysis: !!cached?.analysis,
-    readingsLen: Array.isArray(cached?.readings) ? cached!.readings.length : null,
-    complete,
-    at: new Date().toISOString(),
-  };
 
   // Cache-only in the request path, for every date including today.
   //
