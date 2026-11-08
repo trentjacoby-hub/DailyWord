@@ -7,6 +7,11 @@ import type { DayReadings } from '@/types';
 import type { Metadata } from 'next';
 
 export const runtime = 'nodejs';
+// Opt out of Next's Data Cache. @vercel/kv talks to Upstash over fetch(), which
+// Next 14 caches by default — that made this route serve a stale "no data"
+// KV result after readings were written out-of-band by /api/ingest, fall
+// through to the (Cloudflare-blocked) scrape, throw, and 404 a cached day.
+export const dynamic = 'force-dynamic';
 // Room for today's on-demand analysis to finish and save (past dates are
 // cache-only and return fast). Matches the API routes.
 export const maxDuration = 60;

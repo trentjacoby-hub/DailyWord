@@ -10,14 +10,74 @@ import { fetchReadingsForDate } from './fetchReadings';
 import { analyzeReadings } from './analyzeReadings';
 import { getTodayCST, formatDateISO } from './dates';
 
-// Absolute ceiling on paid analyses per day. A normal day needs exactly one
-// (the midnight cron); the headroom covers a single retry if a scrape was empty
-// then republished. Because ALL Claude spend flows through the single call site
-// below, this caps worst-case daily cost no matter what bug or abuse path reaches it.
+// Absolute ceiling on paid analyses per DATE. A normal day needs exactly one;
+// the headroom covers a single retry if a scrape was empty then republished, and
+// lets a second push client (e.g. a backup machine) trigger the same day safely.
+// Because ALL Claude spend flows through the single call site below, this caps
+// worst-case cost per date no matter what bug or abuse path reaches it.
 const MAX_DAILY_ANALYSES = 2;
+
+export type IngestStatus =
+  | 'analyzed'
+  | 'already_complete'
+  | 'no_readings'
+  | 'locked'
+  | 'cap_reached';
 
 function isComplete(day: DayReadings | null): day is DayReadings {
   return !!day && !!day.analysis && day.readings.length > 0;
+}
+
+/**
+ * Analyze and store an already-scraped day.
+ *
+ * This is the single paid code path. Both entry points funnel through it:
+ *  - /api/ingest, when a home machine pushes HTML it scraped (the working route)
+ *  - ensureDayReadings, when the server scrapes directly (blocked in prod today)
+ *
+ * Idempotent and lock-guarded, so running it twice for the same date — two push
+ * machines, or a push racing the cron — costs nothing the second time.
+ */
+export async function analyzeAndSaveDay(
+  day: DayReadings,
+  opts: { force?: boolean } = {}
+): Promise<{ status: IngestStatus; day: DayReadings }> {
+  if (day.readings.length === 0) return { status: 'no_readings', day };
+
+  const existing = await getReadings(day.date);
+  if (isComplete(existing) && !opts.force) {
+    return { status: 'already_complete', day: existing };
+  }
+
+  const gotLock = await acquireAnalysisLock(day.date);
+  if (!gotLock) return { status: 'locked', day };
+
+  try {
+    // Re-check: another worker may have finished between our read and the lock.
+    const fresh = await getReadings(day.date);
+    if (isComplete(fresh) && !opts.force) {
+      return { status: 'already_complete', day: fresh };
+    }
+
+    // Absolute safety cap, incremented under the lock so it's race-free. The
+    // counter is per-date, so a backfill of old dates each get their own budget.
+    // `force` does NOT bypass this — it only permits re-analyzing a complete day.
+    const attempt = await bumpDailyAnalysisCount(day.date);
+    if (attempt > MAX_DAILY_ANALYSES) {
+      console.error(
+        `[dayData] analysis cap (${MAX_DAILY_ANALYSES}) hit for ${day.date}; ` +
+          `refusing to spend (attempt ${attempt})`
+      );
+      return { status: 'cap_reached', day };
+    }
+    console.log(`[dayData] analyzing ${day.date} (attempt ${attempt}/${MAX_DAILY_ANALYSES})`);
+
+    day.analysis = await analyzeReadings(day);
+    await saveReadings(day);
+    return { status: 'analyzed', day };
+  } finally {
+    await releaseAnalysisLock(day.date);
+  }
 }
 
 /**
@@ -29,9 +89,6 @@ function isComplete(day: DayReadings | null): day is DayReadings {
  * crawler hitting a `/YYYY-MM-DD` URL could trigger a paid analysis for every
  * date in the calendar range. Legit users never hit this — the "Previous" button
  * is disabled for dates that aren't already cached.
- *
- * For today, a per-date KV lock ensures at most one analysis runs even under
- * concurrent requests.
  */
 export async function ensureDayReadings(isoDate: string): Promise<DayReadings | null> {
   const cached = await getReadings(isoDate);
@@ -43,42 +100,10 @@ export async function ensureDayReadings(isoDate: string): Promise<DayReadings | 
     return cached;
   }
 
-  // Today only: generate on demand, guarded so one worker analyzes at a time.
-  const gotLock = await acquireAnalysisLock(isoDate);
-  if (!gotLock) {
-    // Another request is analyzing today — serve cache, else a readings-only
-    // scrape (no analysis, no Claude cost).
-    return cached ?? (await fetchReadingsForDate(isoDate));
-  }
-
-  try {
-    // Re-check: another worker may have finished between our read and the lock.
-    const fresh = await getReadings(isoDate);
-    if (isComplete(fresh)) return fresh;
-
-    const day = await fetchReadingsForDate(isoDate);
-
-    // Don't burn an analysis on an empty scrape (source not published yet).
-    // Leave it unsaved so a later request retries once the readings appear.
-    if (day.readings.length === 0) return day;
-
-    // Absolute safety cap. Incremented under the lock (today-only path), so it's
-    // race-free. Once the daily ceiling is hit we serve readings WITHOUT analysis
-    // rather than spend — a hard stop that bounds cost even if everything else fails.
-    const attempt = await bumpDailyAnalysisCount(isoDate);
-    if (attempt > MAX_DAILY_ANALYSES) {
-      console.error(
-        `[dayData] daily analysis cap (${MAX_DAILY_ANALYSES}) hit for ${isoDate}; ` +
-          `serving readings without analysis (attempt ${attempt})`
-      );
-      return day;
-    }
-    console.log(`[dayData] analyzing ${isoDate} (attempt ${attempt}/${MAX_DAILY_ANALYSES})`);
-
-    day.analysis = await analyzeReadings(day);
-    await saveReadings(day);
-    return day;
-  } finally {
-    await releaseAnalysisLock(isoDate);
-  }
+  // Today only. The direct scrape is currently blocked upstream in production
+  // (Cloudflare blocks Vercel egress), so this will usually throw and the page
+  // falls back to cache; the home-machine push is what actually fills the day.
+  const day = await fetchReadingsForDate(isoDate);
+  const { day: result } = await analyzeAndSaveDay(day);
+  return result;
 }

@@ -3,6 +3,9 @@ import { ensureDayReadings } from '@/lib/dayData';
 import { isFutureDate, isValidISODate } from '@/lib/dates';
 
 export const runtime = 'nodejs';
+// See [date]/page.tsx — without this, cached Upstash fetches hide days that
+// were written by /api/ingest after this route last ran.
+export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(

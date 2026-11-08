@@ -33,3 +33,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# home-machine push client (machine-local secrets + logs)
+scripts/push-readings.config.json
+scripts/*.log

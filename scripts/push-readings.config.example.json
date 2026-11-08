@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy this file to push-readings.config.json and fill in the secret. That file is gitignored. On a machine that has the repo's .env.local, you can skip this entirely - the script reads CRON_SECRET from there.",
+  "siteUrl": "https://www.todaysteachings.com",
+  "ingestSecret": "REPLACE_WITH_INGEST_SECRET_OR_CRON_SECRET"
+}

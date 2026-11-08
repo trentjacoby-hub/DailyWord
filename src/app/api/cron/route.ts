@@ -3,6 +3,7 @@ import { ensureDayReadings } from '@/lib/dayData';
 import { getTodayCST, formatDateISO } from '@/lib/dates';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /**

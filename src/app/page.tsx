@@ -50,8 +50,11 @@ export default async function HomePage() {
   try {
     // Homepage is always today, so this generates on demand if needed.
     dayReadings = (await ensureDayReadings(isoDate)) ?? emptyDay;
-  } catch {
-    // Fall back to whatever is cached rather than crashing the page.
+  } catch (err) {
+    // Fall back to whatever is cached rather than crashing the page — but say
+    // why. Swallowing this silently is what hid the Cloudflare block on the
+    // readings source for a week in Sept 2026.
+    console.error(`[home] ensureDayReadings failed for ${isoDate}:`, err);
     dayReadings = (await getReadings(isoDate)) ?? emptyDay;
   }
 
