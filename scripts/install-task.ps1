@@ -104,20 +104,55 @@ $settings = New-ScheduledTaskSettingsSet `
 
 $userId = "$env:USERDOMAIN\$env:USERNAME"
 
-# S4U runs the task whether or not the user is signed in, without storing a
-# password. Some policies disallow it; fall back to Interactive (signed-in only).
-try {
-  $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType S4U -RunLevel Limited
-  $task = New-ScheduledTask -Action $action -Trigger $triggers -Settings $settings -Principal $principal
-  Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force | Out-Null
-  $logonMode = 'S4U (runs whether or not you are signed in)'
+$isAdmin = (New-Object Security.Principal.WindowsPrincipal(
+  [Security.Principal.WindowsIdentity]::GetCurrent()
+)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+# S4U runs the task whether or not you are signed in, but registering it
+# requires an elevated shell. Interactive needs no elevation and runs only
+# while you are signed in. Try the better one first when we can.
+$modes = if ($isAdmin) { @('S4U', 'Interactive') } else { @('Interactive', 'S4U') }
+
+$registered = $null
+$logonMode = $null
+$errors = @()
+
+foreach ($mode in $modes) {
+  try {
+    $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType $mode -RunLevel Limited
+    $task = New-ScheduledTask -Action $action -Trigger $triggers -Settings $settings -Principal $principal
+    # -ErrorAction Stop is required: Register-ScheduledTask reports failures as
+    # NON-terminating CIM errors that $ErrorActionPreference does not convert,
+    # so without this the catch never fires and failure looks like success.
+    Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force -ErrorAction Stop | Out-Null
+  }
+  catch {
+    $errors += "$mode : $($_.Exception.Message.Trim())"
+    continue
+  }
+
+  # Never trust the call -- confirm the task is really there.
+  $registered = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  if ($registered) {
+    $logonMode = if ($mode -eq 'S4U') {
+      'S4U (runs whether or not you are signed in)'
+    } else {
+      'Interactive (runs only while you are signed in)'
+    }
+    break
+  }
+  $errors += "$mode : call reported success but no task was created"
 }
-catch {
-  Write-Warning "S4U logon was refused ($($_.Exception.Message.Trim())). Falling back to Interactive."
-  $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Limited
-  $task = New-ScheduledTask -Action $action -Trigger $triggers -Settings $settings -Principal $principal
-  Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force | Out-Null
-  $logonMode = 'Interactive (runs only while you are signed in)'
+
+if (-not $registered) {
+  Write-Host ""
+  Write-Host "FAILED to register '$TaskName'." -ForegroundColor Red
+  foreach ($e in $errors) { Write-Host "  $e" -ForegroundColor Red }
+  Write-Host ""
+  Write-Host "Most likely cause: this shell is not elevated and policy requires it." -ForegroundColor Yellow
+  Write-Host "Re-run from an elevated PowerShell:" -ForegroundColor Yellow
+  Write-Host "  Start-Process powershell -Verb RunAs -ArgumentList '-NoExit','-File','$($MyInvocation.MyCommand.Path)'"
+  exit 1
 }
 
 # --- Report ----------------------------------------------------------------
