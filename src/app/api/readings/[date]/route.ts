@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ensureDayReadings } from '@/lib/dayData';
+import { ensureDayReadings, getLastDecision } from '@/lib/dayData';
 import { getReadings, getLastKvError } from '@/lib/storage';
 import { isFutureDate, isValidISODate, getTodayCST, formatDateISO } from '@/lib/dates';
 
@@ -58,6 +58,7 @@ export async function GET(
                 hasKvToken: !!process.env.KV_REST_API_TOKEN,
                 serverToday: new Date().toISOString(),
                 lastKvError: getLastKvError(),
+                lastDecision: getLastDecision(),
                 serverTZ: process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
                 todayISO: formatDateISO(getTodayCST()),
                 requestedDate: date,

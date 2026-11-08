@@ -90,9 +90,25 @@ export async function analyzeAndSaveDay(
  * date in the calendar range. Legit users never hit this — the "Previous" button
  * is disabled for dates that aren't already cached.
  */
+let lastDecision: Record<string, unknown> | null = null;
+export function getLastDecision() {
+  return lastDecision;
+}
+
 export async function ensureDayReadings(isoDate: string): Promise<DayReadings | null> {
   const cached = await getReadings(isoDate);
-  if (isComplete(cached)) return cached;
+  const complete = isComplete(cached);
+  lastDecision = {
+    isoDate,
+    cachedTruthy: !!cached,
+    cachedType: typeof cached,
+    cachedKeys: cached && typeof cached === 'object' ? Object.keys(cached) : null,
+    hasAnalysis: !!cached?.analysis,
+    readingsLen: Array.isArray(cached?.readings) ? cached!.readings.length : null,
+    complete,
+    at: new Date().toISOString(),
+  };
+  if (complete) return cached;
 
   const todayISO = formatDateISO(getTodayCST());
   if (isoDate !== todayISO) {
