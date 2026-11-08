@@ -6,9 +6,7 @@ import {
   releaseAnalysisLock,
   bumpDailyAnalysisCount,
 } from './storage';
-import { fetchReadingsForDate } from './fetchReadings';
 import { analyzeReadings } from './analyzeReadings';
-import { getTodayCST, formatDateISO } from './dates';
 
 // Absolute ceiling on paid analyses per DATE. A normal day needs exactly one;
 // the headroom covers a single retry if a scrape was empty then republished, and
@@ -96,30 +94,32 @@ export function getLastDecision() {
 }
 
 export async function ensureDayReadings(isoDate: string): Promise<DayReadings | null> {
-  const cached = await getReadings(isoDate);
+  // Read-your-write guard. A first kv.get in a request has been observed
+  // returning null for a key that exists (confirmed in prod: the same key read
+  // again ~1s later in the same request returns the full record). Treat a null
+  // on the first read as inconclusive and confirm before acting on it.
+  let cached = await getReadings(isoDate);
+  if (cached === null) {
+    cached = await getReadings(isoDate);
+  }
+
   const complete = isComplete(cached);
   lastDecision = {
     isoDate,
     cachedTruthy: !!cached,
-    cachedType: typeof cached,
-    cachedKeys: cached && typeof cached === 'object' ? Object.keys(cached) : null,
     hasAnalysis: !!cached?.analysis,
     readingsLen: Array.isArray(cached?.readings) ? cached!.readings.length : null,
     complete,
     at: new Date().toISOString(),
   };
-  if (complete) return cached;
 
-  const todayISO = formatDateISO(getTodayCST());
-  if (isoDate !== todayISO) {
-    // Past date with no complete cache → do NOT generate on demand.
-    return cached;
-  }
-
-  // Today only. The direct scrape is currently blocked upstream in production
-  // (Cloudflare blocks Vercel egress), so this will usually throw and the page
-  // falls back to cache; the home-machine push is what actually fills the day.
-  const day = await fetchReadingsForDate(isoDate);
-  const { day: result } = await analyzeAndSaveDay(day);
-  return result;
+  // Cache-only in the request path, for every date including today.
+  //
+  // The direct scrape cannot work from Vercel -- CatholicGallery's Cloudflare
+  // returns 403 to datacenter IPs (confirmed in prod). Attempting it here only
+  // converted "not ready yet" into a thrown 403, which surfaced as a 500 on
+  // this API and a 404 on /[date] for days that were actually present.
+  // Generation happens exclusively through /api/ingest, fed by a machine on a
+  // residential connection. See scripts/README.md.
+  return cached;
 }
