@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureDayReadings } from '@/lib/dayData';
-import { getReadings } from '@/lib/storage';
+import { getReadings, getLastKvError } from '@/lib/storage';
 import { isFutureDate, isValidISODate, getTodayCST, formatDateISO } from '@/lib/dates';
 
 export const runtime = 'nodejs';
@@ -57,6 +57,7 @@ export async function GET(
                 })(),
                 hasKvToken: !!process.env.KV_REST_API_TOKEN,
                 serverToday: new Date().toISOString(),
+                lastKvError: getLastKvError(),
                 serverTZ: process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
                 todayISO: formatDateISO(getTodayCST()),
                 requestedDate: date,

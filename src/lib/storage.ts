@@ -5,10 +5,24 @@ const READINGS_PREFIX = 'readings:';
 const DATES_INDEX_KEY = 'dates:index';
 const MAX_STORED_DAYS = 365;
 
+// A silently-swallowed KV error here is indistinguishable from "no data", which
+// sends callers down the (blocked) scrape path. Record and log it instead.
+let lastKvError: { key: string; message: string; at: string } | null = null;
+export function getLastKvError() {
+  return lastKvError;
+}
+
 export async function getReadings(isoDate: string): Promise<DayReadings | null> {
+  const key = `${READINGS_PREFIX}${isoDate}`;
   try {
-    return await kv.get<DayReadings>(`${READINGS_PREFIX}${isoDate}`);
-  } catch {
+    return await kv.get<DayReadings>(key);
+  } catch (err) {
+    lastKvError = {
+      key,
+      message: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+      at: new Date().toISOString(),
+    };
+    console.error(`[storage] kv.get failed for ${key}:`, err);
     return null;
   }
 }
