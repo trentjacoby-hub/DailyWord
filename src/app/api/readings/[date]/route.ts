@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureDayReadings } from '@/lib/dayData';
+import { getReadings } from '@/lib/storage';
 import { isFutureDate, isValidISODate } from '@/lib/dates';
 
 export const runtime = 'nodejs';
@@ -56,6 +57,38 @@ export async function GET(
                 })(),
                 hasKvToken: !!process.env.KV_REST_API_TOKEN,
                 serverToday: new Date().toISOString(),
+                // What does the app's own KV client actually see for this key?
+                kvRead: await (async () => {
+                  try {
+                    const v = await getReadings(date);
+                    if (!v) return null;
+                    return {
+                      keys: Object.keys(v),
+                      readings: Array.isArray(v.readings) ? v.readings.length : 'not-array',
+                      hasAnalysis: !!v.analysis,
+                    };
+                  } catch (e) {
+                    return { threw: e instanceof Error ? e.message : String(e) };
+                  }
+                })(),
+                // And what does a raw REST call to the same DB return?
+                rawKv: await (async () => {
+                  try {
+                    const res = await fetch(
+                      `${process.env.KV_REST_API_URL}/get/readings:${date}`,
+                      {
+                        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` },
+                        cache: 'no-store',
+                      }
+                    );
+                    const j = await res.json();
+                    const v = j?.result;
+                    const str = typeof v === 'string' ? v : v == null ? null : JSON.stringify(v);
+                    return { status: res.status, len: str ? str.length : 0, head: str ? str.slice(0, 50) : null };
+                  } catch (e) {
+                    return { threw: e instanceof Error ? e.message : String(e) };
+                  }
+                })(),
               },
             }
           : {}),
