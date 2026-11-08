@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureDayReadings } from '@/lib/dayData';
 import { getReadings } from '@/lib/storage';
-import { isFutureDate, isValidISODate } from '@/lib/dates';
+import { isFutureDate, isValidISODate, getTodayCST, formatDateISO } from '@/lib/dates';
 
 export const runtime = 'nodejs';
 // See [date]/page.tsx — without this, cached Upstash fetches hide days that
@@ -57,6 +57,19 @@ export async function GET(
                 })(),
                 hasKvToken: !!process.env.KV_REST_API_TOKEN,
                 serverToday: new Date().toISOString(),
+                serverTZ: process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+                todayISO: formatDateISO(getTodayCST()),
+                requestedDate: date,
+                datesMatch: date === formatDateISO(getTodayCST()),
+                isCompleteNow: await (async () => {
+                  const v = await getReadings(date);
+                  return {
+                    truthy: !!v,
+                    hasAnalysis: !!v?.analysis,
+                    readingsLen: v?.readings?.length ?? null,
+                    verdict: !!v && !!v.analysis && v.readings.length > 0,
+                  };
+                })(),
                 // What does the app's own KV client actually see for this key?
                 kvRead: await (async () => {
                   try {
