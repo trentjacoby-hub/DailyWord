@@ -84,12 +84,23 @@ if (-not (Test-Path $cfgFile) -and -not (Test-Path $envFile) -and -not $env:TT_I
 }
 
 # --- Build the task --------------------------------------------------------
+$userIdForTrigger = "$env:USERDOMAIN\$env:USERNAME"
+
 $action = New-ScheduledTaskAction -Execute $nodeExe -Argument "`"$scriptPath`"" -WorkingDirectory $here
 
-$triggers = foreach ($t in $Time) {
-  if ($t -notmatch '^\d{1,2}:\d{2}$') { throw "Invalid -Time value '$t'. Use HH:mm, e.g. 05:30." }
-  New-ScheduledTaskTrigger -Daily -At $t
-}
+$triggers = @(
+  foreach ($t in $Time) {
+    if ($t -notmatch '^\d{1,2}:\d{2}$') { throw "Invalid -Time value '$t'. Use HH:mm, e.g. 05:30." }
+    New-ScheduledTaskTrigger -Daily -At $t
+  }
+  # Also fire shortly after sign-in. Under Interactive logon a daily trigger is
+  # simply missed whenever you are signed out at that moment, which is what
+  # left several days ungenerated. The job is idempotent, so an extra run on a
+  # finished day short-circuits and costs nothing.
+  $logon = New-ScheduledTaskTrigger -AtLogOn -User $userIdForTrigger
+  $logon.Delay = 'PT3M'
+  $logon
+)
 
 $settings = New-ScheduledTaskSettingsSet `
   -WakeToRun `
