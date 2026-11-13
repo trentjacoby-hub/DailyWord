@@ -204,6 +204,11 @@ async function pushDay(iso, cfg, opts) {
 
 // -- main ------------------------------------------------------------------
 async function main() {
+  // Logged before anything else can fail, so a run that dies early still
+  // leaves a trace. A scheduled task that reports "terminated" with no line
+  // here never got as far as executing this script.
+  log('INFO', `=== start (pid ${process.pid}, node ${process.version}) ===`);
+
   const argv = process.argv.slice(2);
   const opts = {
     force: argv.includes('--force'),

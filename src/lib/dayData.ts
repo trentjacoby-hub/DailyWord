@@ -104,35 +104,64 @@ export async function analyzeAndSaveDay(
     };
 
     const notes: string[] = [];
-    const results: ReadingAnalysis[] = [];
 
-    for (const reading of working.readings) {
-      const key = readingKey(reading);
-      const prior = priorFor(working, key);
+    // Readings are analyzed IN PARALLEL. Doing them sequentially makes total
+    // latency the SUM of the calls, which overruns the 60s function limit on a
+    // 3-reading Sunday; in parallel it is the slowest single call.
+    //
+    // Parallelism is safe here precisely because analyzeOneReading never
+    // throws: there is no all-or-nothing Promise.all semantics to lose work to.
+    // The budget gate is a single atomic INCR, so concurrent reservations are
+    // still counted exactly.
+    const results: ReadingAnalysis[] = new Array(working.readings.length);
 
-      // Already paid for — reuse, never re-request.
-      if (isReadingAnalyzed(prior) && !opts.force) {
-        results.push(prior!);
-        continue;
-      }
+    // Saves are serialized through this chain so concurrent completions cannot
+    // interleave and clobber each other on the same KV key, while still
+    // persisting each result as soon as it lands.
+    let saveChain: Promise<void> = Promise.resolve();
+    const persist = (): Promise<void> => {
+      saveChain = saveChain.then(async () => {
+        working.analysis = {
+          readings: results.filter(Boolean),
+          overallMessage: working.analysis?.overallMessage ?? '',
+          analyzedAt: new Date().toISOString(),
+        };
+        await saveReadings(working);
+      });
+      return saveChain;
+    };
 
-      const { analysis, reason } = await analyzeOneReading(reading, working.liturgicalTitle, gate);
+    await Promise.all(
+      working.readings.map(async (reading, i) => {
+        const key = readingKey(reading);
+        const prior = priorFor(working, key);
 
-      if (analysis) {
-        results.push(analysis);
-      } else {
-        results.push(prior ?? blankAnalysis(key));
-        notes.push(`${key}: ${reason ?? 'failed'}`);
-      }
+        // Already paid for — reuse, never re-request.
+        if (isReadingAnalyzed(prior) && !opts.force) {
+          results[i] = prior!;
+          return;
+        }
 
-      // Persist after each reading so a later failure cannot lose this spend.
-      working.analysis = {
-        readings: results.slice(),
-        overallMessage: working.analysis?.overallMessage ?? '',
-        analyzedAt: new Date().toISOString(),
-      };
-      await saveReadings(working);
-    }
+        const { analysis, reason } = await analyzeOneReading(
+          reading,
+          working.liturgicalTitle,
+          gate
+        );
+
+        if (analysis) {
+          results[i] = analysis;
+          // Persist this success immediately so a later failure, or the
+          // function being killed, cannot discard work already billed.
+          await persist();
+        } else {
+          results[i] = prior ?? blankAnalysis(key);
+          notes.push(`${key}: ${reason ?? 'failed'}`);
+        }
+      })
+    );
+
+    await saveChain;
+    await persist();
 
     // Unifying reflection, only if it isn't already stored.
     if (!working.analysis?.overallMessage?.trim() || opts.force) {
