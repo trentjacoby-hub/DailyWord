@@ -55,7 +55,7 @@ export default async function HomePage() {
     // why. Swallowing this silently is what hid the Cloudflare block on the
     // readings source for a week in Sept 2026.
     console.error(`[home] ensureDayReadings failed for ${isoDate}:`, err);
-    dayReadings = (await getReadings(isoDate)) ?? emptyDay;
+     dayReadings = (await getReadings(isoDate)) ?? emptyDay;
   }
 
   const availableDates = await getProcessedDates();

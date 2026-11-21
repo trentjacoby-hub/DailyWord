@@ -32,6 +32,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import dns from 'node:dns/promises';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LOG_FILE = path.join(HERE, 'push-readings.log');
@@ -125,7 +126,70 @@ function sourceUrl(iso) {
 }
 
 // -- work ------------------------------------------------------------------
-async function withRetry(label, fn, attempts = 3) {
+/**
+ * Node's fetch reports almost every transport problem as the bare string
+ * "fetch failed" and hides the real reason on `cause`. Unwrap it, or failures
+ * are undiagnosable after the fact.
+ */
+function describeError(err) {
+  const parts = [err.message];
+  let c = err.cause;
+  let depth = 0;
+  while (c && depth < 4) {
+    const bit = [c.code, c.name, c.message].filter(Boolean).join(' ');
+    if (bit) parts.push(bit);
+    if (Array.isArray(c.errors)) {
+      for (const e of c.errors) {
+        parts.push(`[${[e.code, e.address, e.port].filter(Boolean).join(' ')}]`);
+      }
+    }
+    c = c.cause;
+    depth++;
+  }
+  return parts.join(' <- ');
+}
+
+/**
+ * Wait until the source host is actually reachable.
+ *
+ * Task Scheduler's StartWhenAvailable fires a missed run the moment the
+ * machine is "available", which is often seconds after resume - before Wi-Fi
+ * has reconnected. Every failure on 2026-11-18..21 was a late catch-up run
+ * dying in ~0.3s with no route, after only ~6s of retries. The task's
+ * ExecutionTimeLimit is 15 minutes, so waiting here is cheap insurance.
+ */
+async function waitForNetwork(maxWaitMs = 5 * 60 * 1000) {
+  const started = Date.now();
+  let attempt = 0;
+  while (Date.now() - started < maxWaitMs) {
+    attempt++;
+    try {
+      await dns.lookup('www.catholicgallery.org');
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      try {
+        await fetch('https://www.catholicgallery.org/robots.txt', {
+          headers: { 'User-Agent': BROWSER_HEADERS['User-Agent'] },
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (attempt > 1) {
+        log('INFO', `network reachable after ${Math.round((Date.now() - started) / 1000)}s`);
+      }
+      return true;
+    } catch (e) {
+      const waited = Math.round((Date.now() - started) / 1000);
+      log('WARN', `network not ready (${waited}s): ${describeError(e)}`);
+      await new Promise((r) => setTimeout(r, Math.min(15000, 3000 * attempt)));
+    }
+  }
+  log('ERROR', `network still unreachable after ${Math.round(maxWaitMs / 1000)}s`);
+  return false;
+}
+
+async function withRetry(label, fn, attempts = 6) {
   let lastErr;
   for (let i = 1; i <= attempts; i++) {
     try {
@@ -134,8 +198,12 @@ async function withRetry(label, fn, attempts = 3) {
       lastErr = e;
       if (e.fatal) throw e;
       if (i < attempts) {
-        const waitMs = 2000 * i;
-        log('WARN', `${label} failed (attempt ${i}/${attempts}): ${e.message} - retrying in ${waitMs}ms`);
+        // Exponential, capped: 5s, 10s, 20s, 40s, 60s (~2.3 min total).
+        const waitMs = Math.min(60000, 5000 * 2 ** (i - 1));
+        log(
+          'WARN',
+          `${label} failed (attempt ${i}/${attempts}): ${describeError(e)} - retrying in ${waitMs}ms`
+        );
         await new Promise((r) => setTimeout(r, waitMs));
       }
     }
@@ -249,13 +317,19 @@ async function main() {
   const host = process.env.COMPUTERNAME || process.env.HOSTNAME || 'unknown';
   log('INFO', `host=${host} site=${cfg.siteUrl} dates=${dates.join(',')}`);
 
+  // A scheduled catch-up run often starts before the network is back.
+  if (!(await waitForNetwork())) {
+    log('ERROR', 'giving up: no network. Task Scheduler will retry on its next trigger.');
+    process.exit(1);
+  }
+
   let failures = 0;
   for (const iso of dates) {
     try {
       await pushDay(iso, cfg, opts);
     } catch (e) {
       failures++;
-      log('ERROR', `${iso} failed: ${e.message}`);
+      log('ERROR', `${iso} failed: ${describeError(e)}`);
       if (e.fatal) {
         log('ERROR', 'fatal error - stopping.');
         break;
